@@ -1,0 +1,272 @@
+AIKit-Spark iOS 接入文档
+注意： 该接口当前仅供测试使用，切勿直接用于生产环境。如您需要申请测试，请点击前往申请页面 。
+
+#1. 功能特性描述
+高效接入：SDK统一封装鉴权模块，接口简单最快三步完成SDK集成接入
+稳定可靠： 统一连接池保障连接时效性，httpDNS保障请求入口高可用性
+配套完善：支持多路并发用户回调上下文绑定，交互历史管理及排障日志回传收集
+多平台兼容：覆盖Windows，Linux，Android，IOS以及其他交叉编译平台
+#2.SDK集成指南
+#2.1 SDK包目录结构说明
+├── Doc
+│   └── AIKit-Spark_iOS 接入文档.md
+├── SDK
+│   └── AIKIT.framework
+└── SparkDemo
+    ├── SparkDemo
+    │   ├── AppDelegate.h
+    │   ├── AppDelegate.m
+    │   ├── Framework
+    │   │   └── AIKIT.framework
+    │   ├── Spark
+    │   │   ├── SparkMessage.h
+    │   │   ├── SparkMessage.m
+    │   │   ├── SparkTableViewCell.h
+    │   │   ├── SparkTableViewCell.m
+    │   │   ├── SparkViewController.h
+    │   │   └── SparkViewController.m
+    │   └── main.m
+    └── SparkDemo.xcodeproj
+#2.2 demo运行步骤
+使用XCode打开SparkDemo.xcodeproj工程
+
+拷贝SDK目录下的AIKIT.framework到SparkDemo/SparkDemo/Framework目录下，在XCode中选择SparkDemo -> General,在Frameworks,Libraries,and embedded Content中设置AIKIT.framework embed & sign
+
+在Xcode中选择SparkViewController.m，填入appId 、 apiKey 、 apiSecret三元祖
+
+#define APPID @"你的appId"
+#define APIKEY @"你的apiKey"
+#define APISERECT @"你的apiSecret"
+编译和运行demo，在如下文本框输入 文本，点击发送获取结果。
+#2.3 项目集成步骤
+导入SDK目录内AIKIT.framework,在XCode中选择SparkDemo -> General,在Frameworks,Libraries,and embedded Content中设置AIKIT.framework embed & sign
+
+集成SDK相关接口，接口调用流程及详细说明如下：
+
+#3.详细API介绍
+Demo调用核心逻辑说明（OC语言）：
+
+// 初始化SDK
+[AiHelper initSDK:^(AiHelperMaker * _Nonnull maker) {
+     maker.appId(APPID).apiKey(APIKEY).apiSecret(APISERECT);
+}];
+// 注册Spark回调
+[AiHelper registerChatCallback:self];
+
+//构造参数
+ChatParam * param = ChatParam.builder().uid(@"AIKit").domain(@"general").maxToken(1024)
+																			 .auditing(@"default").temperature(0.55).topK(4)
+																			 .chatID(@"123");
+NSString * text = @"你好，星火。"			
+// 发送消息
+ret = [AiHelper asyncChat:param inputText:text usrContext:nil];
+if (ret != 0) {
+	NSLog(@"asyncChat failed!");
+}
+
+// 使用结束后注销SDK
+[ILibrary unInit];
+
+#pragma mark - Spark chat Delegate
+// 结果回调
+- (void)onChatOutput:(NSUInteger)handleId role:(NSString *)role content:(NSString *)content index:(int)index userContext:(AIKITUsrContext *)usrctx {
+    NSLog(@"role:%@",role);
+    NSLog(@"content:%@",content);
+    NSLog(@"index:%d",index);
+}
+
+// 错误回调
+- (void)onChatError:(NSUInteger)handleId errNo:(int)errNo desc:(NSString *)errDesc userContext:(AIKITUsrContext *)usrctx {
+    NSLog(@"errNo:%d,desc:%@",errNo,errDesc);
+}
+
+// token回调
+- (void)onChatToken:(NSUInteger)handleId completion:(int)completionTokens prompt:(int)promptTokens total:(int)totalTokens userContext:(AIKITUsrContext *)usrctx {
+   NSLog(@"completionTokens:%d,promptTokens:%d,totalTokens:%d",completionTokens,promptTokens,totalTokens);
+}
+Demo中常见设置参照下方接口文档进行开发。
+
+#3.1 SDK初始化接口
+#3.1.1 SDK初始化
+///  SDK初始化
+/// - Parameter block: 参数回调
++ (int)initSDK:(void(^)(AiHelperMaker *maker))block;
+
+// 示例
+[AiHelper initSDK:^(AiHelperMaker * _Nonnull maker) {
+    maker.appId(APPID).apiKey(APIKEY).apiSecret(APISERECT);
+}];
+说明：初始化回调返回 0表示成功，其他表示错误。 该函数用以初始化整个SDK，初始化相关配置参数如下：
+
+字段	含义	类型	限制	是否必传
+appId	应用的app_id，从开放平台控制台创建的应用中获取	String	"maxLength":16	是
+apiKey	应用的app_key，从开放平台控制台创建的应用中获取	String		是
+apiSecret	应用的app_key，从开放平台控制台创建的应用中获取	String		是
+#3.1 .2 SDK日志配置
+/// 设置AIKIT日志
+/// - Parameters:
+///   - level: 日志等级 0:verbose, 1:debug,2:info,3:warn,4:error,5:fatal,100:off,默认:debug
+///   - mode: 日志模式 0:stdout,2:file
+///   - path: 文件日志路径 
++ (int)setLogInfo:(AIKITLogLvl)level mode:(NSInteger)mode path:(NSString*)path;
+
+//示例
+[AiHelper setLogInfo:AIKITLogVerbose mode:0 path:@"沙盒路径"];
+说明：返回0表示设置成功，其中日志参数说明如下：
+
+字段	含义	类型
+level	日志级别	LogLvl（枚举）：VERBOSE、DEBUG 、INFO 、WARN、ERROR、FATAL、OFF
+mode	日志输出模式	int 0:LOG_STDOUT 1:LOG_LOGCAT 2:LOG_FILE
+path	输出模式为文件时的日志文件路径+名称	String
+#3.1.3 chat初始化
+/// 注册星火回调
+/// - Parameter callback: 回调
++ (int)registerChatCallback:(id<AIKITSparkDelegate>)callback;
+
+// 示例
+// 注册Spark回调
+ [AiHelper registerChatCallback:self];
+说明：callback是实现了id <AIKITSparkDelegate>协议的任意对象
+
+其中三个代理函数定义如下：
+
+#1.onChatOutput，用于异步请求回调结果输出。
+- (void)onChatOutput:(NSUInteger)handleId 
+  							role:(NSString *)role 
+             content:(NSString *)content 
+               index:(int)index 
+         userContext:(AIKITUsrContext *)usrctx 
+参数：
+
+字段	含义	类型
+handleId	用户会话id	NSUInteger
+role	user：表示用户的提问， assistant：表示AI的回复	String
+content	文本内容，该角色的对话内容	String
+index	结果序号，在多候选中使用	int
+userContext	用户自定义标识	AIKITUsrContext *
+#2 onChatToken，用于统计Token相关的数据。
+- (void)onChatToken:(NSUInteger)handleId
+         completion:(int)completionTokens
+             prompt:(int)promptTokens
+              total:(int)totalTokens
+        userContext:(AIKITUsrContext *)usrctx 
+参数：
+
+字段	含义	类型
+handle	用户会话id	NSUInteger
+completionTokens	本次接口回答tokens的大小	int
+promptTokens	本次输入的总tokens大小，注意：在使用上下文场景中带的历史会话信息也会计费，开发者需要酌情考虑保留的历史对话信息数量，避免浪费tokens	int
+totalTokens	本次计费的总tokens大小，值为completionTokens和promptTokens的和	int
+userContext	用户自定义标识	AIKITUsrContext *
+#3. onChatError，用于返回错误信息。
+- (void)onChatError:(NSUInteger)handleId
+              errNo:(int)errNo
+               desc:(NSString *)errDesc
+        userContext:(AIKITUsrContext *)usrctx
+对应错误码与错误信息后续列表。
+
+参数：
+
+字段	含义	类型
+handle	用户会话id	NSUInteger
+err	错误码	int
+errDesc	错误信息	String
+userContext	用户自定义标识	AIKITUsrContext *
+#3.2 交互请求接口<异步>
+/// 星火异步会话
+/// - Parameters:
+///   - param: 会话参数
+///   - inputText: 文本
+///   - context: 用户自定义
++ (int)asyncChat:(ChatParam *) param inputText:(NSString *)inputText usrContext:(nullable AIKITUsrContext *)context;
+
+//示例
+NSString * text = @"你好，星火。"			
+// 发送消息
+ret = [AiHelper asyncChat:param inputText:text usrContext:nil];
+if (ret != 0) {
+	NSLog(@"asyncChat failed!");
+}
+说明：这个接口用于用户异步发送请求，ret为结果错误码，0=成功，错误码见第6章。相关参数配置参考下表：
+
+字段	含义	是否必填	备注
+param	请求参数配置信息	是	见3.2.1
+inputText	请求文本内容	是	见3.2.2
+usrContext	用户上下文	否	用于标识用户上下文
+#3.2.1请求参数配置
+ChatParam * chatParam = ChatParam.builder();
+说明：这个接口用于配置请求参数，相关参数配置参考下表
+
+字段	含义	类型	限制	是否必传
+domain	需要使用的领域，当前仅开放"general"	String	当前仅开放"general"	否
+uid	授权的用户id，用于关联用户交互的上下文	String	"maxLength":32	否
+maxToken	回答的tokens的最大长度	int	取值范围1-2048，默认2048	否
+temperature	配置核采样阈值，改变结果的随机程度	Float	最小是0, 最大是1，默认0.5	否
+auditing	内容审核的场景策略	String	strict表示严格审核策略；moderate表示中等审核策略；loose表示宽松审核策略；default表示默认的审核程度；（调整策略需线下联系产品经理授权）	否
+topK	配置从k个候选中随机选择⼀个（⾮等概率)	int	取值范围1-6，默认值4	否
+请求参数配置示例：
+
+ChatParam chatParam = ChatParam.builder();      
+chatParam.uid("YourUid")
+		  .domain("general")
+		  .maxToken(1024);  
+#3.2.2 请求文本内容
+说明：不同对话交互场景，输入文本格式不同，具体不同如下：
+
+#1.单轮交互
+输入文本是纯字符串，代码示例：
+
+// 初始化chat对象
+AIChat * chat = [[AIChat alloc] initWithDelegate:delegate];
+// 构造对话参数
+ChatParam * chatParam = ChatParam.builder(); 
+chatParam.uid("xxxid")
+          .domain("general")
+          .maxToken(2048);
+//设置输入文本
+NSString * inputText=@"你好";
+//发起交互请求
+ret = [AiHelper asyncChat:chatParam inputText:inputText usrContext:nil];
+#2. 多轮持续交互，包含交互历史上下文
+1、用户自行管理交互历史上下文，输入文本是json数组格式包含完整交互历史，具体SDK调用流程如下：
+
+1.1 配置请求相关参数
+
+// 构造对话参数
+ChatParam * chatParam = ChatParam.builder(); 
+chatParam.uid("xxxid")
+          .domain("general")
+          .maxToken(2048);
+1.2、第一轮交互：
+
+// 设置输入文本
+NSString * inputText = @"你好";
+//发起交互请求
+ret = [AiHelper asyncChat:chatParam inputText:inputText usrContext:nil];
+或者
+
+// 设置输入文本
+NSString * inputText = @"[{@\"role\":@\"user\",@\"content\":@\"你好\"}]";
+//发起交互请求
+ret = [AiHelper asyncChat:chatParam inputText:inputText usrContext:nil];
+1.3、第二轮交互
+
+// message
+//[
+// {"role": "user", "content": "你好"},        // ⽤户第⼀个问题 role是user,表示是⽤户的提问
+// {"role": "assistant", "content": "你好！"}, // AI的第⼀个回复 role是assistant，表示是AI的回复
+// {"role": "user", "content": "你是谁？"},    // ⽤户第⼆个问题
+//]
+
+NSString * message = "" // 如上JSON消息列表
+//发起交互请求
+ret = [AiHelper asyncChat:chatParam inputText:inputText usrContext:nil];
+#4. 逆初始化接口
+说明：应用退出时可调用回收SDK占用相关资源。
+
+/// SDK逆初始化
++ (int)unInit;
+
+// 示例
+[AiHelper unInit];
+#5.错误码说明
